@@ -11,17 +11,20 @@ ARCHITECTURES_FILE="${IMAGE_NAME}-architecture-cache"
 # Check if the available architectures are already cached
 if [ ! -f "$ARCHITECTURES_FILE" ]; then
   # Fetch available architectures and variants, and exclude "unknown" variants
-  AVAILABLE_ARCHITECTURES=$(docker manifest inspect "$IMAGE_NAME:latest" | jq -r '.manifests[] | select(.platform.architecture != null and .platform.architecture != "unknown") | "\(.platform.architecture)-\(.platform.variant // "none")"')
-  
+  AVAILABLE_ARCHITECTURES=$(podman manifest inspect "$IMAGE_NAME:latest" | jq -r '.manifests[] | select(.platform.architecture != null and .platform.architecture != "unknown")')
+
   # Cache the result to a local file
   echo "$AVAILABLE_ARCHITECTURES" > "$ARCHITECTURES_FILE"
-else
-  # Load the cached architectures
-  AVAILABLE_ARCHITECTURES=$(cat "$ARCHITECTURES_FILE")
 fi
 
-# Create a reformatted version for easy printing
-FORMATTED_AVAILABLE_ARCHITECTURES=$(echo $AVAILABLE_ARCHITECTURES | tr '\n' ',' | sed 's/,$//')
+FORMATTED_AVAILABLE_ARCHITECTURES=$(
+    jq -r '
+        .platform.architecture as $arch |
+        (.platform.variant // "none") as $variant_raw |
+        ($variant_raw | if . == "unknown" or . == "" then "none" else . end) as $variant |
+        "(\($arch)-\($variant))"
+    ' "$ARCHITECTURES_FILE"
+)
 
 # Check if architecture argument is provided
 if [ -z "$1" ]; then
@@ -43,12 +46,22 @@ fi
 ARCHITECTURE=$1
 VARIANT=$2
 
-# Check if the requested architecture-variant exists in the cache
-if ! echo "$AVAILABLE_ARCHITECTURES" | grep -q "^$ARCHITECTURE-$VARIANT$"; then
-  echo "Usage: $0 <architecture> <variant> <environment-type>"
-  echo "Error: Architecture-Variant '$ARCHITECTURE-$VARIANT' is not available. Available architectures: "
-  echo $FORMATTED_AVAILABLE_ARCHITECTURES
-  exit 1
+if ! jq -e \
+    --arg req_arch "$ARCHITECTURE" \
+    --arg req_variant "$VARIANT" \
+    '
+        . |
+        # Use the same normalization logic as the list generator for a perfect match.
+        select(
+            .platform.architecture == $req_arch and
+            ((.platform.variant // "none") | if . == "unknown" or . == "" then "none" else . end) == $req_variant
+        )
+    ' "$ARCHITECTURES_FILE" > /dev/null; then
+
+    echo "Usage: $0 <architecture> <variant> <environment-type>"
+    echo "Error: Architecture-Variant '($ARCHITECTURE-$VARIANT)' is not available. Available architectures: "
+    echo "$FORMATTED_AVAILABLE_ARCHITECTURES"
+    exit 1
 fi
 
 # Check if VM type argument is provided
@@ -62,7 +75,6 @@ fi
 
 # Assign the type argument to variables
 TYPE=$3
-
 
 # Build the container image with the specified variant
 podman build --arch $ARCHITECTURE --variant $VARIANT -t "$ARCHITECTURE-$VARIANT-$TYPE-$IMAGE_TAG" environment/"$TYPE"
