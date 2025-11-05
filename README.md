@@ -4,15 +4,17 @@ Simple multi-architecture tool scripts, using podman, qemu, and chroot where app
 ## Installation and Dependencies
 This tool is a personal setup I use for automating access to architecture building and reversing tools with less fuss.
 
-It relies on podman which has integrated qemu virtualization into it. So, simply install podman and clone this repository to use.
+It relies on podman which has the ability to have integrated qemu user virtualization. So, simply install podman and clone this repository to use.
 
 ```zsh
-sudo pacman -Sy podman
+sudo pacman -Sy podman && ./setup.sh
 ```
 
 This should take care of all of the components you need, hence the reason for the project. No fuss.
 
-Obviously however, this only works if you don't need to emulate a really uncommon architecture (no-iommu riscv for example). You'll be better off just building the kernel yourself and running qemu directly.
+Look out for strange bugs, if you're on arch/arctix, however. Such as missing the gvproxy lib helper and virtiofsd.
+
+Obviously however, this only works if you don't need to emulate a really uncommon architecture or custom architecture (no-iommu riscv for example or anything that requires a custom qemu device).
 
 ## Usage
 
@@ -31,7 +33,6 @@ Then, in order to run the image, just call the pandora script. This will allow y
 ```zsh
 sudo ./pandora amd64 none main
 ```
-
 
 ## Notes
 Overall this is just a tool to quickly spin up working environments if you're working on a wide variety of architectures at the same time. It's not as extensible or efficient as other solutions, but it is the easiest.
